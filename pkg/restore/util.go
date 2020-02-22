@@ -3,7 +3,6 @@ package restore
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -185,6 +184,39 @@ func ValidateFileRanges(
 	return ranges, nil
 }
 
+// AttachFilesToRanges attach files to ranges.
+// Panic if range is overlapped or no range for files.
+func AttachFilesToRanges(
+	files []*backup.File,
+	ranges []rtree.Range,
+) []rtree.Range {
+	rangeTree := rtree.NewRangeTree()
+	for _, rg := range ranges {
+		rangeTree.Update(rg)
+	}
+	for _, f := range files {
+
+		rg := rangeTree.Find(&rtree.Range{
+			StartKey: f.GetStartKey(),
+			EndKey:   f.GetEndKey(),
+		})
+		if rg == nil {
+			log.Fatal("range not found",
+				zap.Binary("startKey", f.GetStartKey()),
+				zap.Binary("endKey", f.GetEndKey()))
+		}
+		file := *f
+		rg.Files = append(rg.Files, &file)
+	}
+	if rangeTree.Len() != len(ranges) {
+		log.Fatal("ranges overlapped",
+			zap.Int("ranges length", len(ranges)),
+			zap.Int("tree length", rangeTree.Len()))
+	}
+	sortedRanges := rangeTree.GetSortedRanges()
+	return sortedRanges
+}
+
 // ValidateFileRewriteRule uses rewrite rules to validate the ranges of a file
 func ValidateFileRewriteRule(file *backup.File, rewriteRules *RewriteRules) error {
 	// Check if the start key has a matched rewrite key
@@ -301,6 +333,10 @@ func rewriteFileKeys(file *backup.File, rewriteRules *RewriteRules) (startKey, e
 	if startID == endID {
 		startKey, rule = rewriteRawKey(file.GetStartKey(), rewriteRules)
 		if rewriteRules != nil && rule == nil {
+			log.Error("cannot find rewrite rule",
+				zap.Binary("startKey", file.GetStartKey()),
+				zap.Reflect("rewrite table", rewriteRules.Table),
+				zap.Reflect("rewrite data", rewriteRules.Data))
 			err = errors.New("cannot find rewrite rule for start key")
 			return
 		}
@@ -354,7 +390,6 @@ func paginateScanRegion(
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
-		fmt.Println("scan regions length", len(batch))
 		regions = append(regions, batch...)
 		if len(batch) < limit {
 			// No more region
