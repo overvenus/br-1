@@ -122,6 +122,11 @@ func RunRestore(c context.Context, cmdName string, cfg *RestoreConfig) error {
 		int64(len(ranges)+len(files)),
 		!cfg.LogProgress)
 
+	removedSchedulers, err := restorePreWork(ctx, client, mgr)
+	if err != nil {
+		return err
+	}
+
 	err = restore.SplitRanges(ctx, client, ranges, rewriteRules, updateCh)
 	if err != nil {
 		log.Error("split regions failed", zap.Error(err))
@@ -135,10 +140,6 @@ func RunRestore(c context.Context, cmdName string, cfg *RestoreConfig) error {
 		}
 	}
 
-	removedSchedulers, err := restorePreWork(ctx, client, mgr)
-	if err != nil {
-		return err
-	}
 	err = client.RestoreFiles(files, rewriteRules, updateCh)
 	// always run the post-work even on error, so we don't stuck in the import mode or emptied schedulers
 	postErr := restorePostWork(ctx, client, mgr, removedSchedulers)

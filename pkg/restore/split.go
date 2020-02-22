@@ -11,6 +11,8 @@ import (
 	"github.com/pingcap/log"
 	"github.com/pingcap/tidb/util/codec"
 	"go.uber.org/zap"
+
+	"github.com/pingcap/br/pkg/utils/rtree"
 )
 
 // Constants for split retry machinery.
@@ -52,7 +54,7 @@ type OnSplitFunc func(key [][]byte)
 // note: all ranges and rewrite rules must have raw key.
 func (rs *RegionSplitter) Split(
 	ctx context.Context,
-	ranges []Range,
+	ranges []rtree.Range,
 	rewriteRules *RewriteRules,
 	onSplit OnSplitFunc,
 ) error {
@@ -239,7 +241,7 @@ func (rs *RegionSplitter) splitAndScatterRegions(
 
 // getSplitKeys checks if the regions should be split by the new prefix of the rewrites rule and the end key of
 // 	the ranges, groups the split keys by region id
-func getSplitKeys(rewriteRules *RewriteRules, ranges []Range, regions []*RegionInfo) map[uint64][][]byte {
+func getSplitKeys(rewriteRules *RewriteRules, ranges []rtree.Range, regions []*RegionInfo) map[uint64][][]byte {
 	splitKeyMap := make(map[uint64][][]byte)
 	checkKeys := make([][]byte, 0)
 	for _, rule := range rewriteRules.Table {
