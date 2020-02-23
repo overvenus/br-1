@@ -36,6 +36,7 @@ const (
 	clusterVersionPrefix = "pd/api/v1/config/cluster-version"
 	regionCountPrefix    = "pd/api/v1/stats/region"
 	schdulerPrefix       = "pd/api/v1/schedulers"
+	scheduleConfigPrefix = "pd/api/v1/config/schedule"
 	maxMsgSize           = int(128 * utils.MB) // pd.ScanRegion may return a large response
 )
 
@@ -347,6 +348,53 @@ func (mgr *Mgr) listSchedulersWith(ctx context.Context, get pdHTTPRequest) ([]st
 		return d, nil
 	}
 	return nil, err
+}
+
+// GetPDScheduleConfig returns PD schedule config value associated with the key.
+// It returns nil if there is no such config item.
+func (mgr *Mgr) GetPDScheduleConfig(
+	ctx context.Context, configKey string,
+) (interface{}, error) {
+	var err error
+	for _, addr := range mgr.pdHTTP.addrs {
+		v, e := pdRequest(
+			ctx, addr, scheduleConfigPrefix, mgr.pdHTTP.cli, http.MethodGet, nil)
+		if e != nil {
+			err = e
+			continue
+		}
+		cfg := make(map[string]interface{})
+		err = json.Unmarshal(v, &cfg)
+		if err != nil {
+			return nil, err
+		}
+		value, ok := cfg[configKey]
+		if !ok {
+			return nil, nil
+		}
+		return value, nil
+	}
+	return nil, err
+}
+
+// UpdatePDScheduleConfig updates PD schedule config value associated with the key.
+func (mgr *Mgr) UpdatePDScheduleConfig(
+	ctx context.Context, configKey string, configValue interface{},
+) error {
+	for _, addr := range mgr.pdHTTP.addrs {
+		cfg := make(map[string]interface{})
+		cfg[configKey] = configValue
+		reqData, err := json.Marshal(cfg)
+		if err != nil {
+			return err
+		}
+		_, e := pdRequest(ctx, addr, scheduleConfigPrefix,
+			mgr.pdHTTP.cli, http.MethodPost, bytes.NewBuffer(reqData))
+		if e == nil {
+			return nil
+		}
+	}
+	return errors.New("update PD schedule config failed")
 }
 
 // Close closes all client in Mgr.
